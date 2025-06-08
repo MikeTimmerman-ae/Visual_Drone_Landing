@@ -28,8 +28,8 @@ class MPC:
         self.I = jnp.array(config.drone_config.I)
         self.kf = config.drone_config.kf
         self.km = config.drone_config.km
-        self.max_rotor_speed = np.sqrt(np.abs(4 * self.m * self.g / (4 * self.kf)))     # rad/s
-        self.max_rotor_acc = 500                                                        # rad/s^2
+        self.max_thrust = 2.5 * self.m * self.g                         # [N]
+        self.max_moment = 0.01                                          # [Nm]
 
         # Control buffer management
         self.j = 0
@@ -38,7 +38,7 @@ class MPC:
 
         # Linearize dynamics around steady-state hover
         self.x_hover = jnp.zeros((12,))
-        self.u_hover = jnp.sqrt(self.m * self.g / (4 * self.kf)) * jnp.ones((4,))
+        self.u_hover = jnp.array([self.m * self.g, 0, 0, 0])
         self.A = jnp.diag(np.ones((12,))) + self.dt * jax.jacobian(lambda x: self.f(x, self.u_hover))(self.x_hover)
         self.B = self.dt * jax.jacobian(lambda u: self.f(self.x_hover, u))(self.u_hover)
 
@@ -87,11 +87,9 @@ class MPC:
         # dynamics constraint
         constraints.append(self.A @ (x_cvx[:-1, :] - self.x_hover).T + self.B @ (u_cvx - self.u_hover).T == x_cvx[1:, :].T)
         # Input constraints
-        constraints.append(u_cvx >= 0)
-        constraints.append(u_cvx <= self.max_rotor_speed)
-        constraints.append((u_cvx[1, :] - u0) / self.dt <= self.max_rotor_acc)
-        constraints.append((u_cvx[1:, :] - u_cvx[:-1, :]) / self.dt <= self.max_rotor_acc)
-
+        constraints.append(u_cvx[:, 0] >= 0)
+        constraints.append(u_cvx[:, 0] <= self.max_thrust)
+        constraints.append(cvx.abs(u_cvx[:, 1:]) <= self.max_moment)
         # state constraints
         constraints.append(x_cvx[:, 8] >= 0.)                       # Z-position
         constraints.append(x_cvx[:, :2] <= 30 * np.pi / 180)        # Attitude roll and pitch angles
@@ -111,17 +109,18 @@ class MPC:
 
         Reb_ = self.Reb(state[0:3])
         # Forces
-        thrust = Reb_ @ jnp.array([[0, 0, 0, 0],
-                                  [0, 0, 0, 0],
-                                  [self.kf, self.kf, self.kf, self.kf]]) @ inputs ** 2
+        # thrust = Reb_ @ jnp.array([[0, 0, 0, 0],
+        #                           [0, 0, 0, 0],
+        #                           [self.kf, self.kf, self.kf, self.kf]]) @ inputs ** 2
+        thrust = Reb_ @ jnp.array([0, 0, inputs[0]])
         gravity = jnp.array([0, 0, -self.m * self.g])
         force = thrust + gravity
 
         # Get external moment acting on drone
-        control_moment = jnp.array([[-self.lx * self.kf, -self.lx * self.kf, self.lx * self.kf, self.lx * self.kf],
-                                   [self.ly * self.kf, -self.ly * self.kf, -self.ly * self.kf, self.ly * self.kf],
-                                   [self.km, -self.km, self.km, -self.km]]) @ inputs ** 2
-        moment = control_moment
+        # control_moment = jnp.array([[-self.lx * self.kf, -self.lx * self.kf, self.lx * self.kf, self.lx * self.kf],
+        #                            [self.ly * self.kf, -self.ly * self.kf, -self.ly * self.kf, self.ly * self.kf],
+        #                            [self.km, -self.km, self.km, -self.km]]) @ inputs ** 2
+        moment = jnp.array(inputs[1:])
 
         # Derivatives of attitude angles (phi, theta, psi)
         kinematics = jnp.array([[1, jnp.tan(state[1]) * jnp.sin(state[0]), jnp.tan(state[1]) * jnp.cos(state[0])],

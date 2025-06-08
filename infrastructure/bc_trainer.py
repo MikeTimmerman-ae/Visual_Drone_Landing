@@ -91,7 +91,7 @@ class BCTrainer:
         ## AGENT
         #############
         agent_class = self.params['agent_class']
-        self.agent = agent_class(self.env, self.params['agent_params'])
+        self.agent = agent_class(self.params['agent_params'])
 
     def run_training_loop(self, n_iter, collect_policy, eval_policy,
                         initial_expertdata=None, relabel_with_expert=False,
@@ -148,13 +148,19 @@ class BCTrainer:
             # Log and save videos and metrics
             if self.log_video or self.log_metrics:
 
+                if self.params['save_params'] == "lstm":
+                    print('\nSaving LSTM agent params')
+                    self.agent.save_lstm('{}/lstm_itr_{}.pt'.format(self.params['logdir'], itr))
+                elif self.params['save_params'] == "cnn":
+                    print('\nSaving CNN agent params')
+                    self.agent.save_cnn('{}/cnn_itr_{}.pt'.format(self.params['logdir'], itr))
+                elif self.params['save_params'] == "full":
+                    print('\nSaving agent params')
+                    self.agent.save('{}/policy_itr_{}.pt'.format(self.params['logdir'], itr))
+
                 # Perform logging
                 print('\nBeginning logging procedure...')
                 self.perform_logging(itr, paths, eval_policy, training_logs)
-
-                if self.params['save_params']:
-                    print('\nSaving agent params')
-                    self.agent.save('{}/policy_itr_{}.pt'.format(self.params['logdir'], itr))
 
     ####################################
     ####################################
@@ -180,13 +186,14 @@ class BCTrainer:
         if itr == 0 and load_initial_expertdata:
             print(f"Loading expert data from {load_initial_expertdata}...")
             paths = []
-            for i in range(2):
+            for i in range(6):
                 with open(load_initial_expertdata + f"_{i+1}.pkl", 'rb') as f:
                     paths += pickle.load(f)
             envsteps_this_batch = sum([utils.get_pathlength(path) for path in paths])
         else:
             paths, envsteps_this_batch = utils.sample_trajectories(self.env, collect_policy, self.params['batch_size'],
                                                                    self.params['ep_len'], False, True)
+        print(f"\nUsing {envsteps_this_batch} collected datasamples...")
         return paths, envsteps_this_batch
 
     def train_agent(self):
@@ -201,7 +208,7 @@ class BCTrainer:
             sequences = self.agent.sample(batch_size)
 
             # Use the sampled data to train an agent
-            train_log = self.agent.train(sequences['obs_img'], sequences['obs_height'], sequences['acs'])
+            train_log = self.agent.train(sequences['obs_img'], sequences['states'], sequences['acs'], True)
             print(f'Current training step {train_step + 1} with loss {train_log["Training Loss"]}')
             all_logs.append(train_log)
         return all_logs
@@ -271,8 +278,10 @@ class BCTrainer:
             # Collect evaluation trajectories, for logging
             print("\nCollecting data for eval...")
             eval_paths, _ = utils.sample_trajectories(
-                self.env, eval_policy, self.params['eval_batch_size'], self.params['ep_len']
+                self.env, eval_policy, self.params['eval_batch_size'], self.params['ep_len'], False, True
             )
+            with open(f"agents/expert_data/eval_policy_{itr}.pkl", "wb") as f:
+                pickle.dump(eval_paths, f)
 
             # Get the returns and episode lengths of all paths, for logging
             train_returns = [path["reward"].sum() for path in paths]
@@ -309,6 +318,9 @@ class BCTrainer:
             for key, value in logs.items():
                 print('{} : {}'.format(key, value))
                 self.logger.log_scalar(value, key, itr)
+            # Log enire loss over epochs
+            for i, value in enumerate(training_logs):
+                self.logger.log_scalar(value["Training Loss"], "Train Loss", i + itr * self.params['num_agent_train_steps_per_iter'] + 1)
             print('Done logging...\n\n')
 
             self.logger.flush()

@@ -13,8 +13,8 @@ params['env_kwargs'] = {'render': False}
 env = gym.make(params['env_name'], **params['env_kwargs'])
 expert_agent = MPC(config)
 
-paths = utils.sample_n_trajectories(env, expert_agent, 600, max_path_length=200, expert=True, save_states=True)
+paths = utils.sample_n_trajectories(env, expert_agent, 300, max_path_length=150, expert=True, save_states=True)
 
-for i in range(12):
+for i in range(6):
     with open(f"agents/expert_data/mpc_{i+1}.pkl", "wb") as f:
         pickle.dump(paths[50*i:50*(i+1)], f)

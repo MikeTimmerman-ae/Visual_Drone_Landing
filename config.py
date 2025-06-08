@@ -45,7 +45,7 @@ class Config(object):
     # Configuration of expert agent
     expert_config = BaseConfig()
     expert_config.dt = 0.1
-    expert_config.tN = 5.0                                  # planning horizon
+    expert_config.tN = 5.0                                 # planning horizon
     expert_config.tM = 0.1                                  # control horizon
     expert_config.R = np.diag([1e-1, 1e-1, 1e-1, 1e-1])     # Input cost
     expert_config.P = 1e1 * np.diag(np.ones((12,)))         # Terminal state cost

@@ -31,6 +31,9 @@ def run_bc(params):
         'learning_rate': params['learning_rate'],
         'replay_buffer_seq_len': params['replay_buffer_seq_len'],
         'replay_buffer_max_ep': params['replay_buffer_max_ep'],
+        'full_policy': params['load_full'],
+        'lstm_policy': params['load_lstm'],
+        'cnn_policy': params['load_cnn'],
     }
     params['agent_class'] = BCAgent
     params['agent_params'] = agent_params
@@ -59,8 +62,8 @@ def run_bc(params):
     trainer.run_training_loop(
         n_iter=params['n_iter'],
         initial_expertdata=params['expert_data'],
-        collect_policy=trainer.agent.actor,
-        eval_policy=trainer.agent.actor,
+        collect_policy=trainer.agent,
+        eval_policy=trainer.agent,
         relabel_with_expert=params['do_dagger'],
         expert_policy=expert_agent,
     )
@@ -79,8 +82,13 @@ def main():
     parser.add_argument('--do_dagger', action='store_true')
 
     # Sets the number of gradient steps for training policy (per iter in n_iter)
-    parser.add_argument('--num_agent_train_steps_per_iter', type=int, default=1000)     # Number of inner iterations
+    parser.add_argument('--num_agent_train_steps_per_iter', type=int, default=1500)     # Number of inner iterations
     parser.add_argument('--n_iter', '-n', type=int, default=1)                          # Number of dagger iterations
+
+    # Load policy
+    parser.add_argument('--load_cnn', type=str, default=None)
+    parser.add_argument('--load_lstm', type=str, default=None)
+    parser.add_argument('--load_full', type=str, default=None)
 
     # Amount of training data collected (in the env) during each iteration
     # To get a standard deviation, make sure batch size is N times the
@@ -88,17 +96,17 @@ def main():
     # default batch size, but for final results we recommend a batch size
     # of at least 10,000.
     # Amount of evaluation data collected (in the env) for logging metrics
-    parser.add_argument('--eval_batch_size', type=int, default=1500)
+    parser.add_argument('--eval_batch_size', type=int, default=2000)
     # Number of sampled data points to be used per gradient/train step
-    parser.add_argument('--train_batch_size', type=int, default=250)
+    parser.add_argument('--train_batch_size', type=int, default=500)
 
     # Replay buffer arguments
     # Collection
-    parser.add_argument('--ep_len', type=int, default=200)                      # Max number of samples per episode
-    parser.add_argument('--batch_size', type=int, default=7500)                 # Number of steps during data collection
-    parser.add_argument('--replay_buffer_max_ep', type=int, default=750)        # Max number of saved episodes
+    parser.add_argument('--ep_len', type=int, default=150)                      # Max number of samples per episode
+    parser.add_argument('--batch_size', type=int, default=10000)                # Number of steps during data collection
+    parser.add_argument('--replay_buffer_max_ep', type=int, default=400)        # Max number of saved episodes
     # Sampling
-    parser.add_argument('--replay_buffer_seq_len', type=int, default=25)         # Number of steps sampled in sequence
+    parser.add_argument('--replay_buffer_seq_len', type=int, default=25)        # Number of steps sampled in sequence
 
     # Learning rate for supervised learning
     parser.add_argument('--learning_rate', '-lr', type=float, default=5e-3)
@@ -107,7 +115,7 @@ def main():
     parser.add_argument('--scalar_log_freq', type=int, default=1)
     parser.add_argument('--no_gpu', '-ngpu', action='store_true')
     parser.add_argument('--which_gpu', type=int, default=0)
-    parser.add_argument('--save_params', action='store_true')
+    parser.add_argument('--save_params', type=str)
     parser.add_argument('--seed', type=int, default=1)
     args = parser.parse_args()
 

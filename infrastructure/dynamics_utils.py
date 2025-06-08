@@ -54,12 +54,12 @@ def Rot_eci2body(euler_angles: np.ndarray) -> np.ndarray:
 
 def generate_init_states(num_samples, method):
     bounds = {
-        'att': np.pi / 180 * np.array([-3.0, 3.0]),         # rad
+        'att': np.pi / 180 * np.array([-1.5, 1.5]),         # rad
         'ang_vel': np.pi / 180 * np.array([-0.0, 0.0]),     # rad/s
-        'pos': np.array([[-25, 25],           # xy-pos
-                         [75, 125]]),        # z-pos
-        'lin_vel': np.array([[-1.5, 1.5],    # xy-vel
-                             [-1.0, 0.0]])    # z-vel
+        'pos': np.array([[-5, 5],           # xy-pos
+                         [75, 100]]),        # z-pos
+        'lin_vel': np.array([[-1.0, 1.0],    # xy-vel
+                             [-0.5, 0.0]])    # z-vel
     }
     d = 8
     if method == 'uniform':

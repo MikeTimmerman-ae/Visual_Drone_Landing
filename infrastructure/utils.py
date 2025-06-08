@@ -34,7 +34,7 @@ def sample_trajectory(env, policy, max_path_length, init_state=None, expert=Fals
         else:
             img = ob['cam']
             height = ob['radar']
-            ac = policy.get_action(img, height)[0]
+            ac = policy.get_action(img, info['curr_state'])
         acs.append(ac)
 
         # Take that action and record results

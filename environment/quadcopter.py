@@ -26,7 +26,7 @@ class Quadcopter:
         self.I = config.drone_config.I
         self.lx = config.drone_config.lx
         self.ly = config.drone_config.ly
-        self.lz = config.drone_config.ly
+        self.lz = config.drone_config.lz
         self.rho = config.env_config.rho
         self.g = config.env_config.g
         self.kf = config.drone_config.kf
@@ -105,24 +105,25 @@ class Quadcopter:
         vel = state[9:12]
 
         dx = np.zeros((self.x_dim,))
-        inputs = np.clip(inputs, 0, self.max_rotor_speed)
+        # inputs = np.clip(inputs, 0, self.max_rotor_speed)
         R_body2eci = Rot_body2eci(att)
 
         # Get external force acting on drone (in ECI frame)
-        thrust = R_body2eci @ np.array([[0, 0, 0, 0],
-                                        [0, 0, 0, 0],
-                                        [self.kf, self.kf, self.kf, self.kf]]) @ inputs ** 2
+        # thrust = R_body2eci @ np.array([[0, 0, 0, 0],
+        #                                 [0, 0, 0, 0],
+        #                                 [self.kf, self.kf, self.kf, self.kf]]) @ inputs ** 2
+        thrust =  R_body2eci @ np.array([0, 0, inputs[0]])
         gravity = np.array([0, 0, -self.m * self.g])
-        drag = self.Cd_v * 1 / 2 * self.rho * vel ** 2 * self.A
-        force = thrust + gravity + drag
+        # drag = -0.5 * self.rho * self.Cd_v * self.A * vel * np.abs(vel)
+        force = thrust + gravity
         if self.position[2] <= 0.0 and force[2] <= 0.0:
             force[2] = 0.0
 
         # Get external moment acting on drone
-        control_moment = np.array([[-self.lx * self.kf, -self.lx * self.kf, self.lx * self.kf, self.lx * self.kf],
-                                   [self.ly * self.kf, -self.ly * self.kf, -self.ly * self.kf, self.ly * self.kf],
-                                   [self.km, -self.km, self.km, -self.km]]) @ inputs ** 2
-        moment = control_moment
+        # control_moment = np.array([[-self.lx * self.kf, -self.lx * self.kf, self.lx * self.kf, self.lx * self.kf],
+        #                            [self.ly * self.kf, -self.ly * self.kf, -self.ly * self.kf, self.ly * self.kf],
+        #                            [self.km, -self.km, self.km, -self.km]]) @ inputs ** 2
+        moment = inputs[1:]
 
         # Derivatives of attitude angles (phi, theta, psi)
         kinematics = np.array([[1, np.tan(att[1]) * np.sin(att[0]), np.tan(att[1]) * np.cos(att[0])],
@@ -143,7 +144,7 @@ class Quadcopter:
 
         return dx
 
-    def get_camera_image(self, width=128, height=128, fov=45, near=0.01, far=500):
+    def get_camera_image(self, width=128, height=128, fov=45, near=0.01, far=150):
         pos, ori = p.getBasePositionAndOrientation(self.id)
         rot_matrix = p.getMatrixFromQuaternion(ori)
 

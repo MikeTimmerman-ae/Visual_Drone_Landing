@@ -1,0 +1,115 @@
+import numpy as np
+import torch
+from torch import nn, optim
+from torch.distributions import Normal
+from infrastructure.replay_buffer import ReplayBuffer
+from policies.base_policy import BasePolicy
+from policies.CNN_LSTM_policy import PolicyNetwork
+from .base_agent import BaseAgent
+import infrastructure.pytorch_util as ptu
+
+class PPOAgent(BaseAgent):
+    def __init__(self, agent_params):
+        super(PPOAgent, self).__init__()
+        self.agent_params = agent_params
+
+        self.actor = PolicyNetwork(
+            agent_params['ac_dim'],
+            learning_rate=agent_params['learning_rate']
+        )
+
+        self.replay_buffer = ReplayBuffer(
+            agent_params['replay_buffer_seq_len'],
+            agent_params['replay_buffer_max_ep']
+        )
+
+        self.clip_ratio = 0.2
+        self.gamma = agent_params.get('gamma', 0.99)
+        self.ppo_epochs = agent_params.get('ppo_epochs', 10)
+
+    def reset(self):
+        self.actor.reset()
+
+    def get_action(self, image_ob, state_ob, use_cnn=False):
+        image_ob, state_ob = self.process_obs(image_ob, state_ob)
+        dist, _ = self.actor(image_ob, state_ob, use_cnn)
+        return ptu.to_numpy(dist.sample())
+
+    def train(self, trajectories, use_cnn=False):
+        image_obs, state_obs, actions, rewards, next_state_obs, terminals = trajectories
+
+        with torch.no_grad():
+            _, values = self.actor(image_obs, state_obs, use_cnn)
+            returns = self.compute_returns(rewards, terminals)
+            advantages = returns - values.squeeze()
+
+        for _ in range(self.ppo_epochs):
+            dist, values = self.actor(image_obs, state_obs, use_cnn)
+            log_probs = dist.log_prob(actions).sum(axis=-1)
+            entropy = dist.entropy().mean()
+
+            with torch.no_grad():
+                old_log_probs = log_probs.detach()
+
+            ratio = torch.exp(log_probs - old_log_probs)
+            surr1 = ratio * advantages
+            surr2 = torch.clamp(ratio, 1.0 - self.clip_ratio, 1.0 + self.clip_ratio) * advantages
+            policy_loss = -torch.min(surr1, surr2).mean()
+
+            value_loss = nn.MSELoss()(values.squeeze(), returns)
+
+            loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
+
+            self.actor.optimizer.zero_grad()
+            loss.backward()
+            self.actor.optimizer.step()
+
+    def compute_returns(self, rewards, terminals):
+        returns = []
+        R = 0
+        for r, done in zip(reversed(rewards), reversed(terminals)):
+            if done:
+                R = 0
+            R = r + self.gamma * R
+            returns.insert(0, R)
+        return torch.tensor(returns, dtype=torch.float32, device=ptu.device)
+    
+    def save(self, path):
+        """
+        :param path: path to save
+        """
+        return self.actor.save(path)
+    
+    def process_obs(self, image_ob: np.ndarray, state_ob: np.ndarray):
+
+        # Expand over batch dimension if necessary
+        if image_ob.ndim == 3:  # (C, H, W)
+            image_ob = np.expand_dims(image_ob, axis=0)        # → (1, C, H, W)
+        if state_ob.ndim == 1:  # (1,)
+            state_ob = np.expand_dims(state_ob, axis=0)        # → (1, 1)
+
+        # Normalize image and convert to gray-scale
+        image_rgb_ob_norm = image_ob.astype(np.float32) / 255.
+        weights = np.array([0.1, 0.7, 0.2], dtype=np.float32).reshape(3, 1, 1)
+        image_gray_ob_norm = np.sum(image_rgb_ob_norm * weights, axis=1, keepdims=True)
+        
+        # Normalize state observation
+        state_ob = np.concatenate([
+            state_ob[:, 0:3],               # (pitch/roll/yaw)
+            state_ob[:, 3:6],               # (pitch/roll/yaw rate)
+            state_ob[:, 6:8] / 10,          # (xy-pos)
+            state_ob[:, 8:9] / 150,         # (z-pos)
+            state_ob[:, 9:12],              # (xyz-vel)
+        ], axis=1)
+
+        return ptu.from_numpy(image_gray_ob_norm), ptu.from_numpy(state_ob)
+    
+    def process_action(self, actions: np.ndarray):
+
+        # Normalize actions
+        ac_norm = np.column_stack((actions[:, 0] / 12.5 - 1.0,
+                                   actions[:, 1] / 10e-3,
+                                   actions[:, 2] / 10e-3,
+                                   actions[:, 3] / 10e-3))
+
+        return ptu.from_numpy(ac_norm)

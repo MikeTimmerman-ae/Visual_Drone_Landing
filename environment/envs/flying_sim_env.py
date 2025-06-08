@@ -45,6 +45,7 @@ class FlightEnv(gym.Env):
         self.reach_count = 0
         self.deviation_count = 0
         self.timeout_count = 0
+        self.prev_dist = np.linalg.norm(self.quad.position)
 
         # Logging
         self.times = np.zeros((self.max_steps,))
@@ -67,7 +68,22 @@ class FlightEnv(gym.Env):
                 'radar': np.float32(height)}
 
     def _get_reward(self):
-        return 0
+        
+        curr_dist = np.linalg.norm(self.quad.position)
+        progress = self.prev_dist - curr_dist
+        self.prev_dist = curr_dist
+
+        # Encourage progress
+        r = 1.5 * progress
+
+        # Encourage soft landings
+        if curr_dist < 5.0:
+            r -= 0.1 * np.linalg.norm(self.quad.lin_velocity_e)**2
+
+            if curr_dist < 1.5 and np.linalg.norm(self.quad.lin_velocity_e) < 0.5:
+                r += 1.0
+
+        return np.clip(r, -10, 10)
 
     def _get_termination(self):
         # Terminate episode if drone has landed or max time has been reached

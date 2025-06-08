@@ -1,23 +1,52 @@
-import matplotlib.pyplot as plt
 import numpy as np
 from infrastructure.replay_buffer import ReplayBuffer
 import pickle
-import cv2
 import time
-import matplotlib
-# matplotlib.use('TkAgg')
+from environment.quadcopter import Quadcopter
+from config import Config
+import pybullet as p
+from environment.pad import create_pad
 
 rad2deg = 180 / np.pi
 buffer = ReplayBuffer()
 
-with open('agents/expert_data/mpc_1.pkl', 'rb') as f:
-    paths = pickle.load(f)
-    obs_ls = np.array([path["observation"] for path in paths], dtype=object)
-    actions_ls = np.array([path["action"] for path in paths], dtype=object)
-    states_ls = np.array([path["state"] for path in paths], dtype=object)
+paths = []
+for i in range(6):
+    with open(f"agents/expert_data/mpc_{i+1}.pkl", 'rb') as f:
+        paths += pickle.load(f)
 
-    # obs_img, obs_height, actions_ls, next_obs_img, next_obs_height, terminals, rewards, states_ls = utils.convert_listofrollouts(paths)
+# with open(f"agents/expert_data/eval_policy_0.pkl", 'rb') as f:
+#     paths = pickle.load(f)
 
+
+# p.connect(p.DIRECT)
+# p.setGravity(0, 0, 0)
+# p.setRealTimeSimulation(0)
+# create_pad()
+# quad = Quadcopter(Config())
+# for i, path in enumerate(paths):
+#     for j, state in enumerate(path["state"]):
+#         quad.reset(state)
+#         rgba_img = quad.get_camera_image()
+#         rgb_img = rgba_img[:, :, :3].T
+#         paths[i]["ob_image"][j] = rgb_img
+
+# for i in range(6):
+#     with open(f"agents/expert_data/mpc_{i+1}.pkl", "wb") as f:
+#         pickle.dump(paths[50*i:50*(i+1)], f)
+
+
+obs_ls = np.array([path["ob_image"] for path in paths], dtype=object)
+actions_ls = np.array([path["action"] for path in paths], dtype=object)
+states_ls = np.array([path["state"] for path in paths], dtype=object)
+reward_ls = np.array([path["reward"] for path in paths], dtype=object)
+            
+train_returns = [path["reward"].sum() for path in paths]
+train_ep_lens = [len(path["reward"]) for path in paths]
+
+print(np.mean(train_returns))
+print(np.std(train_returns))
+print(np.mean(train_ep_lens))
 
 # lengths = []
 # for ob_height in obs_height:
@@ -31,8 +60,8 @@ with open('agents/expert_data/mpc_1.pkl', 'rb') as f:
 #         break
 #     time.sleep(0.1)
 
-rgb_img = obs_ls[0][50]['cam']
-cv2.imshow("Drone Camera", rgb_img.T)
+# rgb_img = obs_ls[0][50]['cam']
+# cv2.imshow("Drone Camera", rgb_img.T)
 
 # # Plot generated paths
 # fig1, axs1 = plt.subplots(2, 3, figsize=(12, 3))
